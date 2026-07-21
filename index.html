@@ -4,113 +4,264 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>vault</title>
-<meta name="description" content="run your agent. it can't destroy your machine.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace' fill='%23c8d0d8'>v</text></svg>">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0a0a0a;--text:#e0e0e0;--dim:#666;--red:#dc2626;--border:#222;--card:#111}
-body{background:var(--bg);color:var(--text);font-family:'SF Mono','Fira Code','JetBrains Mono',monospace;line-height:1.7;font-size:15px}
-a{color:var(--text);text-decoration:none;border-bottom:1px solid var(--dim)}
-a:hover{border-bottom-color:var(--text)}
-code{font-family:inherit;background:var(--card);padding:2px 6px;border-radius:3px;font-size:0.9em}
-pre{background:var(--card);padding:16px 20px;border-radius:6px;overflow-x:auto;border:1px solid var(--border);font-size:0.85em;line-height:1.5}
-nav{display:flex;justify-content:space-between;align-items:center;padding:20px 40px;border-bottom:1px solid var(--border)}
-nav .brand{font-weight:700;letter-spacing:-0.02em}
-nav .links{display:flex;gap:24px;font-size:0.85em}
-nav a{border:none}
-.hero{padding:100px 40px 80px;max-width:720px;margin:0 auto}
-.hero h1{font-size:2.2em;line-height:1.25;letter-spacing:-0.03em;margin-bottom:24px;font-weight:700}
-.hero p{color:var(--dim);font-size:1.1em;max-width:520px;margin-bottom:12px}
-.hero p:first-of-type{color:var(--text);font-size:1.2em}
-.section{padding:60px 40px;max-width:720px;margin:0 auto}
-.section h2{font-size:1.3em;margin-bottom:20px;letter-spacing:-0.02em}
-.section p{color:var(--dim);margin-bottom:12px}
-.section .item{margin-bottom:32px}
-.section .item h3{font-size:1em;margin-bottom:8px;color:var(--text)}
-.section .item p{font-size:0.92em}
-.install{padding:40px;max-width:720px;margin:0 auto}
-.install pre{margin-top:8px}
-.footer{border-top:1px solid var(--border);padding:40px;text-align:center;color:var(--dim);font-size:0.85em}
-@media(max-width:600px){
-  nav{padding:16px 20px}
-  .hero{padding:60px 20px 40px}
-  .hero h1{font-size:1.6em}
-  .section{padding:40px 20px}
-  .install{padding:20px}
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0c0f;
+  color: #c8d0d8;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 400;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+nav {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+nav .logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 18px;
+  color: #e8ecf0;
+  text-decoration: none;
+}
+
+nav a {
+  color: #6b7580;
+  text-decoration: none;
+  font-size: 13px;
+  margin-left: 20px;
+  transition: color 0.2s;
+}
+
+nav a:hover { color: #c8d0d8; }
+
+main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 24px 120px;
+}
+
+.hero {
+  padding: 80px 0 60px;
+}
+
+.hero h1 {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  color: #e8ecf0;
+  margin-bottom: 20px;
+  line-height: 1.05;
+}
+
+.hero .subtitle {
+  font-size: 17px;
+  color: #6b7580;
+  max-width: 480px;
+  line-height: 1.5;
+}
+
+.section {
+  padding: 40px 0;
+  border-top: 1px solid #1a1d23;
+}
+
+.section h2 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #3d4550;
+  margin-bottom: 24px;
+}
+
+.modules {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.module {
+  padding: 20px;
+  background: #11151a;
+  border-radius: 6px;
+  border: 1px solid #1a1d23;
+}
+
+.module .name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e8ecf0;
+  margin-bottom: 6px;
+}
+
+.module .desc {
+  font-size: 14px;
+  color: #6b7580;
+  line-height: 1.5;
+}
+
+.install {
+  padding: 40px 0;
+  border-top: 1px solid #1a1d23;
+}
+
+.install pre {
+  background: #11151a;
+  border: 1px solid #1a1d23;
+  border-radius: 6px;
+  padding: 16px;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #e8ecf0;
+}
+
+.stats {
+  display: flex;
+  gap: 32px;
+  padding: 32px 0;
+  border-top: 1px solid #1a1d23;
+}
+
+.stat .num {
+  font-size: 32px;
+  font-weight: 800;
+  color: #e8ecf0;
+  letter-spacing: -1px;
+}
+
+.stat .label {
+  font-size: 12px;
+  color: #3d4550;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.footer {
+  padding: 40px 0;
+  border-top: 1px solid #1a1d23;
+}
+
+.footer p {
+  font-size: 14px;
+  color: #6b7580;
+  margin-bottom: 8px;
+}
+
+.footer a {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: #6b7580;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.footer a:hover { color: #c8d0d8; }
+
+@media (max-width: 600px) {
+  .hero h1 { font-size: 36px; }
+  .stats { flex-wrap: wrap; gap: 24px; }
 }
 </style>
 </head>
 <body>
 
 <nav>
-  <div class="brand">vault</div>
-  <div class="links">
-    <a href="#install">install</a>
-    <a href="https://github.com/valtors/vault">github</a>
-  </div>
+  <a href="/" class="logo">vault</a>
+  <a href="https://github.com/valtors/vault">github</a>
 </nav>
 
-<div class="hero">
-  <h1>run your agent.<br>it can't destroy your machine.</h1>
-  <p>vault is a sandbox for ai agents. the agent thinks it has full access. it doesn't.</p>
-  <p>every file access goes through an overlay. every network call goes through a proxy. every mcp server gets scanned for prompt injection before it connects. every tool call gets logged.</p>
-  <p>the agent can't read your ssh keys. it can't call your production database. it can't follow instructions embedded in tool descriptions. and if it tries, you'll know.</p>
-</div>
-
-<div class="section">
-  <h2>what it stops</h2>
-
-  <div class="item">
-    <h3>filesystem escape</h3>
-    <p>the agent gets a sandboxed home. it can't see ~/.ssh, ~/.aws, ~/.config, or anything you block. allowed directories pass through. writes go to the overlay, not your real filesystem.</p>
+<main>
+  <div class="hero">
+    <h1>run your agent.<br>it can't destroy your machine.</h1>
+    <p class="subtitle">
+      a sandbox for ai agents. the agent thinks it has full access to your system.
+      it gets a fake home. a clean environment. a network policy. an mcp scanner.
+      every action logged. you sleep fine.
+    </p>
   </div>
 
-  <div class="item">
-    <h3>network exfiltration</h3>
-    <p>every outbound connection passes through an allow/deny ruleset. the agent can't call your production database. it can't send data to a random host. you set the rules.</p>
+  <div class="section">
+    <h2>what it does</h2>
+    <div class="modules">
+      <div class="module">
+        <div class="name">env sanitizer</div>
+        <div class="desc">strips every secret from the environment. tokens, api keys, credentials, passwords. 30+ patterns. the agent sees a clean shell. your secrets stay yours.</div>
+      </div>
+      <div class="module">
+        <div class="name">fs overlay</div>
+        <div class="desc">agent gets a fake home directory. ~/.ssh invisible. ~/.aws invisible. ~/.env invisible. writes go to the overlay. reads from allowlisted paths only.</div>
+      </div>
+      <div class="module">
+        <div class="name">net policy</div>
+        <div class="desc">allow/deny rules per host. wildcard support. the agent can't call your production database. the agent can't exfiltrate data. every connection logged.</div>
+      </div>
+      <div class="module">
+        <div class="name">mcp gate</div>
+        <div class="desc">every mcp server connection goes through the scanner. tool descriptions checked for prompt injection. injection patterns stripped before the agent sees them.</div>
+      </div>
+      <div class="module">
+        <div class="name">inject scanner</div>
+        <div class="desc">30 patterns. prompt override, identity swap, exfiltration, destructive commands, reverse shells, tool poisoning, base64 obfuscation, privilege escalation. all detected. all stripped.</div>
+      </div>
+      <div class="module">
+        <div class="name">audit log</div>
+        <div class="desc">sqlite. every sandbox action, every file access, every network request, every injection attempt. timestamped. queryable. you know what happened.</div>
+      </div>
+      <div class="module">
+        <div class="name">http api</div>
+        <div class="desc">create sandboxes, query audit logs, kill processes, manage rules. all from a single endpoint. one binary. no dependencies.</div>
+      </div>
+    </div>
   </div>
 
-  <div class="item">
-    <h3>mcp prompt injection</h3>
-    <p>every mcp server the agent connects to gets probed first. tool descriptions are scanned for prompt injection. if a tool says "ignore all previous instructions" in its description, it gets stripped before the agent sees it. 11 out of 17 npm mcp servers had security findings. vault blocks them.</p>
+  <div class="stats">
+    <div class="stat">
+      <div class="num">7</div>
+      <div class="label">modules</div>
+    </div>
+    <div class="stat">
+      <div class="num">62</div>
+      <div class="label">tests</div>
+    </div>
+    <div class="stat">
+      <div class="num">30</div>
+      <div class="label">inject patterns</div>
+    </div>
+    <div class="stat">
+      <div class="num">0</div>
+      <div class="label">dependencies</div>
+    </div>
   </div>
 
-  <div class="item">
-    <h3>silent tool calls</h3>
-    <p>every tool call, every file access, every network request, every injection attempt gets logged to sqlite. timestamped. queryable. "what did the agent do at 3am" is one curl.</p>
+  <div class="install">
+    <h2>install</h2>
+    <pre>go install github.com/valtors/vault/cmd/vault@latest</pre>
+    <br>
+    <h2>use</h2>
+    <pre>vault run -- claude-code
+vault run -timeout 60 -- python script.py
+vault serve -port 9090</pre>
   </div>
-</div>
 
-<div class="section" id="install">
-  <h2>install</h2>
-  <pre>go install github.com/valtors/vault/cmd/vault@latest</pre>
-  <p style="margin-top:12px">or build from source:</p>
-  <pre>git clone https://github.com/valtors/vault
-cd vault
-go build -o vault ./cmd/vault/</pre>
-</div>
-
-<div class="section">
-  <h2>usage</h2>
-  <pre>vault run -- claude-code
-vault run -- npx -y @modelcontextprotocol/server-filesystem /tmp
-vault run -- python agent.py</pre>
-  <p style="margin-top:16px">start the http api:</p>
-  <pre>vault serve -port 9090</pre>
-  <p style="margin-top:16px">query the audit log:</p>
-  <pre>curl localhost:9090/audit?source=mcp_gate
-curl localhost:9090/audit?event=injection_blocked</pre>
-</div>
-
-<div class="section">
-  <h2>why</h2>
-  <p>every developer using ai agents is giving them root. claude, cursor, any agent. they get your filesystem, your network, your api keys. and you hope nothing goes wrong.</p>
-  <p style="margin-top:12px">you connected an mcp server to your ai agent. you didn't check what was inside. some of these servers tell your agent to ignore your instructions. and your agent will.</p>
-  <p style="margin-top:12px">vault is the answer. run your agent in it. the agent can't destroy your machine.</p>
-</div>
-
-<div class="footer">
-  valtors &middot; <a href="https://github.com/valtors/vault" style="border:none">github</a>
-</div>
+  <div class="footer">
+    <p>go. single binary. zero runtime dependencies. sqlite (pure-go). boring tech on purpose.</p>
+    <a href="https://github.com/valtors/vault">github.com/valtors/vault</a>
+  </div>
+</main>
 
 </body>
 </html>
