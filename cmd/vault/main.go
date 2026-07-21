@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -8,8 +9,9 @@ import (
 
 	"github.com/valtors/vault/internal/api"
 	"github.com/valtors/vault/internal/sandbox"
-	"github.com/valtors/vault/internal/store"
 )
+
+const version = "0.1.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -18,92 +20,123 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "version", "-v", "--version":
+		fmt.Println(version)
+	case "help", "-h", "--help":
+		usage()
 	case "run":
 		runCmd(os.Args[2:])
 	case "serve":
 		serveCmd(os.Args[2:])
-	case "version":
-		fmt.Println("vault 0.1.0")
-	case "help", "-h", "--help":
-		usage()
 	default:
-		fmt.Fprintf(os.Stderr, "vault: unknown command %q\n", os.Args[1])
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		usage()
 		os.Exit(1)
 	}
-}
-
-func usage() {
-	fmt.Println(`vault
-
-run your agent. it can't destroy your machine.
-
-commands:
-  run <cmd> [args...]   run a command inside the sandbox
-  serve [flags]         start the HTTP API server
-  version               print version
-
-flags for serve:
-  -port <n>   listen port (default 9090)
-
-examples:
-  vault run -- claude-code
-  vault run -- npx -y @modelcontextprotocol/server-filesystem /tmp
-  vault serve -port 8080`)
 }
 
 func runCmd(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "vault: run needs a command")
+	fs := flag.NewFlagSet("vault run", flag.ExitOnError)
+	timeout := fs.Int("timeout", 0, "timeout in seconds (0 = no limit)")
+	dir := fs.String("dir", "", "sandbox root directory")
+	allow := fs.String("allow", "", "comma-separated list of allowed directories")
+	fs.Parse(args)
+
+	rest := fs.Args()
+	if len(rest) == 0 {
+		fmt.Fprintln(os.Stderr, "vault run: no command specified")
 		os.Exit(1)
 	}
 
-	db, err := store.New("/tmp/vault-audit.db")
+	cfg := sandbox.Config{
+		Command:     rest[0],
+		Args:        rest[1:],
+		TimeoutSecs: *timeout,
+		RootDir:      *dir,
+	}
+
+	if *allow != "" {
+		cfg.AllowedDirs = splitCSV(*allow)
+	}
+
+	sb, err := sandbox.New(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "vault: %v\n", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer sb.Cleanup()
 
-	cfg := sandbox.DefaultConfig()
-	sb := sandbox.New(cfg, db)
+	if err := sb.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "vault: %v\n", err)
+		os.Exit(1)
+	}
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
-		sb.Stop()
+		sb.Kill()
 	}()
 
-	if err := sb.Run(args); err != nil {
+	if err := sb.Wait(); err != nil {
 		fmt.Fprintf(os.Stderr, "vault: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func serveCmd(args []string) {
-	port := 9090
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-port":
-			if i+1 < len(args) {
-				fmt.Sscanf(args[i+1], "%d", &port)
-				i++
-			}
-		}
-	}
+	fs := flag.NewFlagSet("vault serve", flag.ExitOnError)
+	port := fs.Int("port", 9090, "api server port")
+	fs.Parse(args)
 
-	db, err := store.New("/tmp/vault-audit.db")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "vault: %v\n", err)
-		os.Exit(1)
-	}
-	defer db.Close()
-
-	srv := api.NewServer(db, port)
-	fmt.Printf("vault listening on :%d\n", port)
+	srv := api.NewServer(*port)
+	fmt.Fprintf(os.Stderr, "vault api on :%d\n", *port)
 	if err := srv.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "vault: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func usage() {
+	fmt.Fprintf(os.Stderr, `vault %s - sandbox for ai agents
+
+usage:
+  vault run [flags] <command> [args...]    run a command in a sandbox
+  vault serve [flags]                      start the api server
+  vault version                            print version
+  vault help                               show this message
+
+run flags:
+  -timeout int     timeout in seconds (0 = no limit)
+  -dir string      sandbox root directory
+  -allow string    comma-separated allowed directories
+
+serve flags:
+  -port int        api server port (default 9090)
+
+examples:
+  vault run -timeout 60 -- claude-code
+  vault run --allow /home/user/project -- python script.py
+  vault serve -port 8080
+`, version)
+}
+
+func splitCSV(s string) []string {
+	var result []string
+	current := ""
+	for i := 0; i < len(s); i++ {
+		if s[i] == ',' {
+			if current != "" {
+				result = append(result, current)
+				current = ""
+			}
+		} else {
+			current += string(s[i])
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
 }

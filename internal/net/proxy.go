@@ -1,10 +1,14 @@
 package net
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
+	"time"
+
+	"github.com/valtors/vault/internal/store"
 )
 
 type Rule struct {
@@ -12,43 +16,55 @@ type Rule struct {
 	Action string `json:"action"`
 }
 
-type Proxy struct {
+type Policy struct {
 	allowed []string
 	blocked []string
 	mu      sync.RWMutex
+	logs    *store.DB
 }
 
-func NewProxy(allowed, blocked []string) *Proxy {
-	return &Proxy{
-		allowed: allowed,
-		blocked: blocked,
+func NewPolicy(logs *store.DB) *Policy {
+	return &Policy{
+		allowed: []string{},
+		blocked: []string{},
+		logs:    logs,
 	}
 }
 
-func (p *Proxy) Allow(host string) {
+func (p *Policy) Allow(host string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	for _, h := range p.allowed {
+		if h == host {
+			return
+		}
+	}
 	p.allowed = append(p.allowed, host)
 }
 
-func (p *Proxy) Block(host string) {
+func (p *Policy) Block(host string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	for _, h := range p.blocked {
+		if h == host {
+			return
+		}
+	}
 	p.blocked = append(p.blocked, host)
 }
 
-func (p *Proxy) Check(host string) error {
+func (p *Policy) Check(host string) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	hostname := strings.ToLower(host)
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		hostname = strings.ToLower(h)
-	}
+	hostname := extractHost(host)
 
-	for _, b := range p.blocked {
-		if matchHost(hostname, strings.ToLower(b)) {
-			return fmt.Errorf("blocked: %s", host)
+	for _, blocked := range p.blocked {
+		if matchHost(hostname, blocked) {
+			if p.logs != nil {
+				p.logs.Log("net", "BLOCKED", fmt.Sprintf("connection to %s blocked by policy", host))
+			}
+			return fmt.Errorf("blocked: %s matches deny rule %s", host, blocked)
 		}
 	}
 
@@ -56,36 +72,95 @@ func (p *Proxy) Check(host string) error {
 		return nil
 	}
 
-	for _, a := range p.allowed {
-		if matchHost(hostname, strings.ToLower(a)) {
+	for _, allowed := range p.allowed {
+		if matchHost(hostname, allowed) {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("not in allowlist: %s", host)
+	if p.logs != nil {
+		p.logs.Log("net", "BLOCKED", fmt.Sprintf("connection to %s blocked: not in allowlist", host))
+	}
+	return fmt.Errorf("blocked: %s not in allowlist", host)
 }
 
-func (p *Proxy) Rules() []Rule {
+func (p *Policy) Rules() []Rule {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-
 	var rules []Rule
-	for _, h := range p.blocked {
-		rules = append(rules, Rule{Host: h, Action: "deny"})
-	}
 	for _, h := range p.allowed {
 		rules = append(rules, Rule{Host: h, Action: "allow"})
+	}
+	for _, h := range p.blocked {
+		rules = append(rules, Rule{Host: h, Action: "block"})
 	}
 	return rules
 }
 
+func (p *Policy) SetRules(rules []Rule) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.allowed = p.allowed[:0]
+	p.blocked = p.blocked[:0]
+	for _, r := range rules {
+		if r.Action == "allow" {
+			p.allowed = append(p.allowed, r.Host)
+		} else {
+			p.blocked = append(p.blocked, r.Host)
+		}
+	}
+}
+
+type Dialer struct {
+	policy *Policy
+	timeout time.Duration
+}
+
+func NewDialer(policy *Policy, timeout time.Duration) *Dialer {
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+	return &Dialer{policy: policy, timeout: timeout}
+}
+
+func (d *Dialer) Dial(network, addr string) (net.Conn, error) {
+	if err := d.policy.Check(addr); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), d.timeout)
+	defer cancel()
+	return (&net.Dialer{}).DialContext(ctx, network, addr)
+}
+
 func matchHost(host, pattern string) bool {
-	if host == pattern {
+	if pattern == "*" {
 		return true
 	}
-	if strings.HasPrefix(pattern, "*.") {
+	if pattern == host {
+		return true
+	}
+	if len(pattern) > 0 && pattern[0] == '*' {
 		suffix := pattern[1:]
-		return strings.HasSuffix(host, suffix)
+		if len(host) >= len(suffix) && host[len(host)-len(suffix):] == suffix {
+			return true
+		}
 	}
 	return false
+}
+
+func extractHost(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
+}
+
+type ProxyStats struct {
+	Allowed int `json:"allowed"`
+	Blocked int `json:"blocked"`
+}
+
+func (p *Policy) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.Rules())
 }

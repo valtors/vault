@@ -1,10 +1,12 @@
 package mcp
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"time"
@@ -14,9 +16,26 @@ import (
 )
 
 type Server struct {
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
-	Tools   []Tool   `json:"tools"`
+	cmd      *exec.Cmd
+	stdin    io.WriteCloser
+	stdout   io.Reader
+	db       *store.DB
+	mu       sync.Mutex
+	scanning bool
+}
+
+type jsonRPC struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.Number     `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *rpcError        `json:"error,omitempty"`
+}
+
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 type Tool struct {
@@ -24,146 +43,179 @@ type Tool struct {
 	Description string `json:"description"`
 }
 
-type Gate struct {
-	db     *store.DB
-	mu     sync.RWMutex
-	servers map[string]*Server
+type ToolsListResult struct {
+	Tools []Tool `json:"tools"`
 }
 
-func NewGate(db *store.DB) *Gate {
-	return &Gate{
-		db:     db,
-		servers: make(map[string]*Server),
-	}
-}
+func NewServer(ctx context.Context, command string, args []string, db *store.DB) (*Server, error) {
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Env = os.Environ()
 
-func (g *Gate) Register(name, command string, args []string) error {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
-	srv := &Server{
-		Command: command,
-		Args:    args,
-	}
-
-	if err := g.probe(srv); err != nil {
-		return fmt.Errorf("probe %s: %w", name, err)
-	}
-
-	for i, tool := range srv.Tools {
-		findings := inject.Scan(tool.Description, tool.Name)
-		for _, f := range findings {
-			srv.Tools[i].Description = inject.Strip(tool.Description)
-			g.db.Log("mcp_gate", "injection_blocked", fmt.Sprintf("server=%s tool=%s pattern=%s severity=%s", name, f.Tool, f.Pattern, f.Severity))
-		}
-	}
-
-	g.servers[name] = srv
-	g.db.Log("mcp_gate", "register", fmt.Sprintf("server=%s tools=%d", name, len(srv.Tools)))
-
-	return nil
-}
-
-func (g *Gate) probe(srv *Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, srv.Command, srv.Args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("stdin pipe: %w", err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
+	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, fmt.Errorf("start command: %w", err)
 	}
 
-	initReq := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "initialize",
-		"params": map[string]interface{}{
-			"protocolVersion": "2024-11-05",
-			"capabilities":    map[string]interface{}{},
-			"clientInfo": map[string]interface{}{
-				"name":    "vault",
-				"version": "0.1.0",
-			},
-		},
+	if db != nil {
+		db.Log("mcp", "START", fmt.Sprintf("started: %s %v", command, args))
 	}
 
-	encoder := json.NewEncoder(stdin)
-	if err := encoder.Encode(initReq); err != nil {
-		cmd.Process.Kill()
-		return err
-	}
+	return &Server{
+		cmd:    cmd,
+		stdin:  stdin,
+		stdout: stdout,
+		db:     db,
+	}, nil
+}
 
-	listReq := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      2,
-		"method":  "tools/list",
-		"params":  map[string]interface{}{},
-	}
-	if err := encoder.Encode(listReq); err != nil {
-		cmd.Process.Kill()
-		return err
-	}
+func (s *Server) Proxy(in io.Reader, out io.Writer) error {
+	go io.Copy(s.stdin, in)
 
-	decoder := json.NewDecoder(stdout)
-	var listResp struct {
-		Result struct {
-			Tools []Tool `json:"tools"`
-		} `json:"result"`
-	}
+	scanner := bufio.NewScanner(s.stdout)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
 
-	for {
-		var msg map[string]json.RawMessage
-		if err := decoder.Decode(&msg); err != nil {
-			if err == io.EOF {
-				break
-			}
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		var msg jsonRPC
+		if err := json.Unmarshal(line, &msg); err != nil {
+			out.Write(line)
+			out.Write([]byte("\n"))
 			continue
 		}
 
-		if id, ok := msg["id"]; ok {
-			var idVal float64
-			json.Unmarshal(id, &idVal)
-			if idVal == 2 {
-				if result, ok := msg["result"]; ok {
-					var lr struct {
-						Tools []Tool `json:"tools"`
-					}
-					json.Unmarshal(result, &lr)
-					srv.Tools = lr.Tools
-					cmd.Process.Kill()
-					return nil
-				}
+		if msg.Method == "tools/list" {
+			s.handleToolsList(line, out)
+			continue
+		}
+
+		if msg.Method == "tools/call" && s.db != nil {
+			var params map[string]interface{}
+			if msg.Params != nil {
+				json.Unmarshal(msg.Params, &params)
+				toolName, _ := params["name"].(string)
+				s.db.Log("mcp", "CALL", toolName)
 			}
+		}
+
+		out.Write(line)
+		out.Write([]byte("\n"))
+	}
+
+	return scanner.Err()
+}
+
+func (s *Server) handleToolsList(line []byte, out io.Writer) {
+	var msg jsonRPC
+	json.Unmarshal(line, &msg)
+
+	result := ToolsListResult{}
+	if msg.Result != nil {
+		json.Unmarshal(msg.Result, &result)
+	}
+
+	var totalFindings int
+	var allFindings []inject.Finding
+
+	for i := range result.Tools {
+		findings := inject.Scan(result.Tools[i].Description, result.Tools[i].Name)
+		if len(findings) > 0 {
+			cleaned, stripped := inject.Strip(result.Tools[i].Description)
+			result.Tools[i].Description = cleaned
+			allFindings = append(allFindings, stripped...)
+			totalFindings += len(stripped)
 		}
 	}
 
-	cmd.Process.Kill()
-	return fmt.Errorf("no tools/list response")
-}
-
-func (g *Gate) List() []Server {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	var list []Server
-	for _, srv := range g.servers {
-		list = append(list, *srv)
+	if totalFindings > 0 && s.db != nil {
+		s.db.Log("mcp", "INJECT", fmt.Sprintf("stripped %d injection patterns from %d tools", totalFindings, len(result.Tools)))
 	}
-	return list
+
+	newResult, _ := json.Marshal(result)
+	msg.Result = newResult
+	msg.Error = nil
+
+	output, _ := json.Marshal(msg)
+	out.Write(output)
+	out.Write([]byte("\n"))
 }
 
-func (g *Gate) Remove(name string) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	delete(g.servers, name)
-	g.db.Log("mcp_gate", "remove", fmt.Sprintf("server=%s", name))
+func (s *Server) Close() error {
+	s.stdin.Close()
+	done := make(chan error, 1)
+	go func() { done <- s.cmd.Wait() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(5 * time.Second):
+		s.cmd.Process.Kill()
+		<-done
+		return fmt.Errorf("killed: did not exit in 5s")
+	}
+}
+
+func (s *Server) ScanTools(ctx context.Context) ([]inject.Result, error) {
+	initReq, _ := json.Marshal(jsonRPC{
+		JSONRPC: "2.0",
+		ID:     json.Number("1"),
+		Method: "initialize",
+		Params: json.RawMessage(`{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"vault","version":"0.1.0"}}`),
+	})
+	s.stdin.Write(initReq)
+	s.stdin.Write([]byte("\n"))
+
+	notify, _ := json.Marshal(jsonRPC{
+		JSONRPC: "2.0",
+		Method:  "notifications/initialized",
+	})
+	s.stdin.Write(notify)
+	s.stdin.Write([]byte("\n"))
+
+	listReq, _ := json.Marshal(jsonRPC{
+		JSONRPC: "2.0",
+		ID:     json.Number("2"),
+		Method:  "tools/list",
+	})
+	s.stdin.Write(listReq)
+	s.stdin.Write([]byte("\n"))
+
+	scanner := bufio.NewScanner(s.stdout)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
+
+	deadline, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var results []inject.Result
+	for scanner.Scan() {
+		select {
+		case <-deadline.Done():
+			return results, fmt.Errorf("timeout")
+		default:
+		}
+
+		var msg jsonRPC
+		if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+			continue
+		}
+		if msg.Method == "tools/list" || (msg.ID != "" && string(msg.ID) == "2") {
+			tools := ToolsListResult{}
+			if msg.Result != nil {
+				json.Unmarshal(msg.Result, &tools)
+			}
+			for _, tool := range tools.Tools {
+				results = append(results, inject.ScanDescription(tool.Description, tool.Name))
+			}
+			break
+		}
+	}
+
+	return results, scanner.Err()
 }

@@ -6,118 +6,181 @@ import (
 	"testing"
 )
 
-func TestResolveAllowedDir(t *testing.T) {
-	o := NewOverlay("/tmp/vault-test", []string{"/usr", "/bin"}, []string{"/home"})
-	resolved, err := o.Resolve("/bin/sh")
+func TestNewOverlayCreatesDirs(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "vault-test-overlay-1")
+	defer os.RemoveAll(root)
+
+	o, err := NewOverlay(root, nil)
 	if err != nil {
-		t.Fatalf("allowed dir should resolve: %v", err)
+		t.Fatalf("NewOverlay: %v", err)
 	}
-	if resolved != "/bin/sh" {
-		t.Fatalf("expected /bin/sh, got %s", resolved)
+
+	for _, dir := range []string{o.Home(), o.Tmp(), o.Root()} {
+		info, err := os.Stat(dir)
+		if err != nil {
+			t.Fatalf("missing dir %s: %v", dir, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("%s is not a dir", dir)
+		}
 	}
 }
 
-func TestResolveBlockedDir(t *testing.T) {
-	o := NewOverlay("/tmp/vault-test", []string{"/usr"}, []string{"/home", "/root"})
-	_, err := o.Resolve("/home/user/.ssh/id_rsa")
+func TestResolveInsideSandbox(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "vault-test-overlay-2")
+	defer os.RemoveAll(root)
+
+	o, err := NewOverlay(root, nil)
+	if err != nil {
+		t.Fatalf("NewOverlay: %v", err)
+	}
+
+	testFile := filepath.Join(o.Home(), "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := o.Resolve(testFile)
+	if err != nil {
+		t.Fatalf("Resolve(%s): %v", testFile, err)
+	}
+	if resolved != testFile {
+		t.Fatalf("resolved = %s, want %s", resolved, testFile)
+	}
+}
+
+func TestResolveBlocksOutsideSandbox(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "vault-test-overlay-3")
+	defer os.RemoveAll(root)
+
+	o, err := NewOverlay(root, nil)
+	if err != nil {
+		t.Fatalf("NewOverlay: %v", err)
+	}
+
+	_, err = o.Resolve("/etc/passwd")
 	if err == nil {
-		t.Fatal("blocked dir should be denied")
+		t.Fatal("Resolve(/etc/passwd) should fail")
 	}
 }
 
-func TestResolveOverlayDir(t *testing.T) {
-	o := NewOverlay("/tmp/vault-test", []string{"/usr"}, []string{"/home"})
-	resolved, err := o.Resolve("/tmp/work/file.txt")
+func TestResolveBlocksSensitivePaths(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "vault-test-overlay-4")
+	defer os.RemoveAll(root)
+
+	o, err := NewOverlay(root, nil)
 	if err != nil {
-		t.Fatalf("non-blocked, non-allowed should go to overlay: %v", err)
-	}
-	if resolved != "/tmp/vault-test/tmp/work/file.txt" {
-		t.Fatalf("expected overlay path, got %s", resolved)
-	}
-}
-
-func TestWriteAndRead(t *testing.T) {
-	dir := t.TempDir()
-	o := NewOverlay(dir, nil, []string{"/home"})
-
-	if err := o.WriteFile("/test.txt", []byte("hello")); err != nil {
-		t.Fatalf("write failed: %v", err)
+		t.Fatalf("NewOverlay: %v", err)
 	}
 
-	data, err := o.ReadFile("/test.txt")
-	if err != nil {
-		t.Fatalf("read failed: %v", err)
-	}
-	if string(data) != "hello" {
-		t.Fatalf("expected hello, got %s", string(data))
-	}
-}
-
-func TestExists(t *testing.T) {
-	dir := t.TempDir()
-	o := NewOverlay(dir, nil, nil)
-
-	if o.Exists("/nofile.txt") {
-		t.Fatal("should not exist")
-	}
-
-	o.WriteFile("/exists.txt", []byte("yes"))
-	if !o.Exists("/exists.txt") {
-		t.Fatal("should exist after write")
-	}
-}
-
-func TestListDir(t *testing.T) {
-	dir := t.TempDir()
-	o := NewOverlay(dir, nil, nil)
-
-	o.WriteFile("/a.txt", []byte("a"))
-	o.WriteFile("/b.txt", []byte("b"))
-
-	entries, err := o.ListDir("/")
-	if err != nil {
-		t.Fatalf("list failed: %v", err)
-	}
-	if len(entries) < 2 {
-		t.Fatalf("expected at least 2 entries, got %d", len(entries))
-	}
-}
-
-func TestStat(t *testing.T) {
-	dir := t.TempDir()
-	o := NewOverlay(dir, nil, nil)
-
-	o.WriteFile("/stat.txt", []byte("content"))
-	info, err := o.Stat("/stat.txt")
-	if err != nil {
-		t.Fatalf("stat failed: %v", err)
-	}
-	if info.Size() != 7 {
-		t.Fatalf("expected size 7, got %d", info.Size())
-	}
-}
-
-func TestBlockedPreventsWrite(t *testing.T) {
-	dir := t.TempDir()
-	o := NewOverlay(dir, nil, []string{"/home/container/.ssh"})
-
-	err := o.WriteFile("/home/container/.ssh/id_rsa", []byte("PRIVATE KEY"))
+	sshPath := filepath.Join(o.Home(), ".ssh", "id_rsa")
+	_, err = o.Resolve(sshPath)
 	if err == nil {
-		t.Fatal("write to blocked path should fail")
+		t.Fatal("Resolve(.ssh/id_rsa) should fail")
 	}
 }
 
-func TestAllowedReadsFromReal(t *testing.T) {
-	tmpDir := t.TempDir()
-	realFile := filepath.Join(tmpDir, "real.txt")
-	os.WriteFile(realFile, []byte("real content"), 0644)
+func TestWriteAndReadFile(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "vault-test-overlay-5")
+	defer os.RemoveAll(root)
 
-	o := NewOverlay("/tmp/vault-overlay", []string{tmpDir}, nil)
-	data, err := o.ReadFile(realFile)
+	o, err := NewOverlay(root, nil)
 	if err != nil {
-		t.Fatalf("read from allowed dir failed: %v", err)
+		t.Fatalf("NewOverlay: %v", err)
 	}
-	if string(data) != "real content" {
-		t.Fatalf("expected real content, got %s", string(data))
+
+	testPath := filepath.Join(o.Home(), "data", "file.txt")
+	if err := o.WriteFile(testPath, []byte("payload"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	data, err := o.ReadFile(testPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "payload" {
+		t.Fatalf("data = %s, want payload", string(data))
+	}
+}
+
+func TestWriteFileBlocksSensitivePath(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "vault-test-overlay-6")
+	defer os.RemoveAll(root)
+
+	o, err := NewOverlay(root, nil)
+	if err != nil {
+		t.Fatalf("NewOverlay: %v", err)
+	}
+
+	sshPath := filepath.Join(o.Home(), ".ssh", "id_rsa")
+	err = o.WriteFile(sshPath, []byte("stolen"), 0644)
+	if err == nil {
+		t.Fatal("WriteFile to .ssh should fail")
+	}
+}
+
+func TestCleanup(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "vault-test-overlay-7")
+
+	o, err := NewOverlay(root, nil)
+	if err != nil {
+		t.Fatalf("NewOverlay: %v", err)
+	}
+
+	if err := o.Cleanup(); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatal("Cleanup should remove root dir")
+	}
+}
+
+func TestSafeRemoveRoot(t *testing.T) {
+	err := SafeRemove("/")
+	if err == nil {
+		t.Fatal("SafeRemove(/) should fail")
+	}
+}
+
+func TestSafeRemoveNormal(t *testing.T) {
+	dir := filepath.Join(os.TempDir(), "vault-test-safe-rm")
+	os.MkdirAll(dir, 0700)
+	if err := SafeRemove(dir); err != nil {
+		t.Fatalf("SafeRemove(%s): %v", dir, err)
+	}
+}
+
+func TestIsBlockedPath(t *testing.T) {
+	home, _ := os.UserHomeDir()
+	blocked := filepath.Join(home, ".ssh")
+	if !IsBlockedPath(blocked) {
+		t.Fatalf("IsBlockedPath(%s) = false, want true", blocked)
+	}
+
+	normal := filepath.Join(home, "projects")
+	if IsBlockedPath(normal) {
+		t.Fatalf("IsBlockedPath(%s) = true, want false", normal)
+	}
+}
+
+func TestDiskUsage(t *testing.T) {
+	root := filepath.Join(os.TempDir(), "vault-test-disk-usage")
+	defer os.RemoveAll(root)
+
+	o, err := NewOverlay(root, nil)
+	if err != nil {
+		t.Fatalf("NewOverlay: %v", err)
+	}
+
+	o.WriteFile(filepath.Join(o.Home(), "a.txt"), []byte("aaaaa"), 0644)
+	o.WriteFile(filepath.Join(o.Home(), "b.txt"), []byte("bb"), 0644)
+
+	size, err := DiskUsage(o.Home())
+	if err != nil {
+		t.Fatalf("DiskUsage: %v", err)
+	}
+	if size < 7 {
+		t.Fatalf("disk usage = %d, want >= 7", size)
 	}
 }

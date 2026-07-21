@@ -1,122 +1,167 @@
 package sandbox
 
 import (
-	"bufio"
+	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"syscall"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/valtors/vault/internal/env"
+	"github.com/valtors/vault/internal/fs"
 	"github.com/valtors/vault/internal/store"
 )
 
 type Sandbox struct {
-	cfg    Config
-	db     *store.DB
-	cmd    *exec.Cmd
-	stopCh chan struct{}
+	cfg     Config
+	overlay *fs.Overlay
+	db      *store.DB
+	cmd     *exec.Cmd
+	id      int64
+	started time.Time
+	mu      sync.Mutex
+	done    atomic.Bool
 }
 
-func New(cfg Config, db *store.DB) *Sandbox {
+var nextID int64
+
+func New(cfg Config) (*Sandbox, error) {
+	id := atomic.AddInt64(&nextID, 1)
+
+	if cfg.RootDir == "" {
+		cfg.RootDir = filepath.Join(os.TempDir(), fmt.Sprintf("vault-sandbox-%d", id))
+	}
+
+	dbPath := filepath.Join(cfg.RootDir, "audit.db")
+	if err := os.MkdirAll(cfg.RootDir, 0700); err != nil {
+		return nil, fmt.Errorf("create root: %w", err)
+	}
+
+	db, err := store.New(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("init audit log: %w", err)
+	}
+
+	overlay, err := fs.NewOverlay(filepath.Join(cfg.RootDir, "fs"), cfg.AllowedDirs)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create overlay: %w", err)
+	}
+
 	return &Sandbox{
-		cfg:    cfg,
-		db:     db,
-		stopCh: make(chan struct{}),
-	}
+		cfg:     cfg,
+		overlay: overlay,
+		db:      db,
+		id:      id,
+	}, nil
 }
 
-func (s *Sandbox) Run(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("no command given")
+func (s *Sandbox) Start() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cmd != nil {
+		return fmt.Errorf("already running")
 	}
 
-	if err := s.setupRoot(); err != nil {
-		return fmt.Errorf("setup: %w", err)
+	if s.cfg.Command == "" {
+		return fmt.Errorf("no command")
 	}
 
-	cmd := exec.Command(args[0], args[1:]...)
+	s.db.Log("sandbox", "START", fmt.Sprintf("#%d command=%s args=%v", s.id, s.cfg.Command, s.cfg.Args))
+
+	ctx := context.Background()
+	if s.cfg.TimeoutSecs > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.TimeoutSecs)*time.Second)
+		defer cancel()
+	}
+
+	cmd := exec.CommandContext(ctx, s.cfg.Command, s.cfg.Args...)
+
+	cmd.Env = env.SanitizeOS(s.overlay.Home())
+	cmd.Dir = s.overlay.Home()
+
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Dir = s.cfg.RootDir
-	cmd.Env = s.filteredEnv()
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Cloneflags: syscall.CLONE_NEWNS | syscall.CLONE_NEWPID,
+	if s.cfg.TimeoutSecs > 0 {
+		go func() {
+			<-ctx.Done()
+			s.db.Log("sandbox", "TIMEOUT", fmt.Sprintf("#%d exceeded %ds", s.id, s.cfg.TimeoutSecs))
+		}()
 	}
 
 	s.cmd = cmd
-	s.db.Log("sandbox", "start", fmt.Sprintf("cmd=%s args=%v", args[0], args[1:]))
+	s.started = time.Now()
 
-	startTime := time.Now()
-	err := cmd.Run()
-	duration := time.Since(startTime)
-
-	status := "ok"
-	if err != nil {
-		status = err.Error()
+	if err := cmd.Start(); err != nil {
+		s.db.Log("sandbox", "ERROR", fmt.Sprintf("start failed: %v", err))
+		return fmt.Errorf("start: %w", err)
 	}
 
-	s.db.Log("sandbox", "stop", fmt.Sprintf("status=%s duration=%s", status, duration))
-	return err
-}
-
-func (s *Sandbox) Stop() {
-	if s.cmd != nil && s.cmd.Process != nil {
-		s.cmd.Process.Signal(syscall.SIGTERM)
-		s.db.Log("sandbox", "stop", "signal=SIGTERM")
-	}
-	close(s.stopCh)
-}
-
-func (s *Sandbox) setupRoot() error {
-	if err := os.MkdirAll(s.cfg.RootDir, 0755); err != nil {
-		return err
-	}
-
-	for _, dir := range []string{"bin", "tmp", "dev", "proc", "home"} {
-		if err := os.MkdirAll(filepath.Join(s.cfg.RootDir, dir), 0755); err != nil {
-			return err
-		}
-	}
-
-	nullDev := filepath.Join(s.cfg.RootDir, "dev", "null")
-	if _, err := os.Stat(nullDev); os.IsNotExist(err) {
-		syscall.Mknod(nullDev, syscall.S_IFCHR|0666, 0)
-	}
+	s.db.Log("sandbox", "RUNNING", fmt.Sprintf("#%d pid=%d", s.id, cmd.Process.Pid))
 
 	return nil
 }
 
-func (s *Sandbox) filteredEnv() []string {
-	var env []string
-	for _, e := range os.Environ() {
-		if strings.HasPrefix(e, "HOME=") {
-			env = append(env, "HOME=/home")
-			continue
-		}
-		if strings.HasPrefix(e, "USER=") {
-			env = append(env, "USER=agent")
-			continue
-		}
-		if strings.HasPrefix(e, "VAULT_") {
-			continue
-		}
-		if strings.Contains(e, "KEY") || strings.Contains(e, "TOKEN") || strings.Contains(e, "SECRET") || strings.Contains(e, "PASSWORD") {
-			continue
-		}
-		env = append(env, e)
+func (s *Sandbox) Wait() error {
+	s.mu.Lock()
+	if s.cmd == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("not running")
 	}
-	return env
+	s.mu.Unlock()
+
+	err := s.cmd.Wait()
+	s.done.Store(true)
+
+	elapsed := time.Since(s.started)
+	s.db.Log("sandbox", "EXIT", fmt.Sprintf("#%d duration=%s err=%v", s.id, elapsed, err))
+
+	return err
 }
 
-func (s *Sandbox) PipeLogs(r io.Reader, source string) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		s.db.Log("pipe", source, scanner.Text())
+func (s *Sandbox) Kill() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cmd == nil || s.cmd.Process == nil {
+		return fmt.Errorf("not running")
 	}
+
+	s.db.Log("sandbox", "KILL", fmt.Sprintf("#%d pid=%d", s.id, s.cmd.Process.Pid))
+	return s.cmd.Process.Kill()
+}
+
+func (s *Sandbox) Cleanup() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.db != nil {
+		s.db.Close()
+	}
+	if s.overlay != nil {
+		s.overlay.Cleanup()
+	}
+	return nil
+}
+
+func (s *Sandbox) ID() int64        { return s.id }
+func (s *Sandbox) Home() string     { return s.overlay.Home() }
+func (s *Sandbox) Root() string      { return s.cfg.RootDir }
+func (s *Sandbox) DB() *store.DB    { return s.db }
+func (s *Sandbox) Overlay() *fs.Overlay { return s.overlay }
+func (s *Sandbox) IsDone() bool      { return s.done.Load() }
+
+func (s *Sandbox) AuditLog(category string, limit int) ([]store.Entry, error) {
+	return s.db.Query(category, limit)
+}
+
+func (s *Sandbox) EnvSummary() []string {
+	return env.SanitizeOS(s.overlay.Home())
 }

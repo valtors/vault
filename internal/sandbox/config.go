@@ -1,25 +1,21 @@
 package sandbox
 
 type Config struct {
-	RootDir      string
-	AllowedDirs  []string
-	BlockedDirs  []string
-	AllowedHosts []string
-	BlockedHosts []string
-	MaxMemoryMB  int
+	RootDir       string
+	AllowedDirs   []string
+	AllowedHosts  []string
+	BlockedHosts  []string
+	MaxMemoryMB   int
 	MaxCPUSeconds int
-	Timeout      int
+	TimeoutSecs   int
+	Command       string
+	Args          []string
 }
 
 func DefaultConfig() Config {
 	return Config{
-		RootDir:      "/tmp/vault-root",
-		AllowedDirs:  []string{"/usr", "/bin", "/lib", "/etc"},
-		BlockedDirs:  []string{"/home", "/root", "/tmp/vault-audit.db"},
-		AllowedHosts: []string{},
-		BlockedHosts: []string{},
-		MaxMemoryMB:  512,
+		MaxMemoryMB:   512,
 		MaxCPUSeconds: 300,
-		Timeout:      3600,
+		TimeoutSecs:   0,
 	}
 }
