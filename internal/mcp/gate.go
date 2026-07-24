@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"sync"
 	"time"
 
 	"github.com/valtors/vault/internal/inject"
@@ -16,12 +15,10 @@ import (
 )
 
 type Server struct {
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	stdout   io.Reader
-	db       *store.DB
-	mu       sync.Mutex
-	scanning bool
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout io.Reader
+	db     *store.DB
 }
 
 type jsonRPC struct {
@@ -123,14 +120,12 @@ func (s *Server) handleToolsList(line []byte, out io.Writer) {
 	}
 
 	var totalFindings int
-	var allFindings []inject.Finding
 
 	for i := range result.Tools {
 		findings := inject.Scan(result.Tools[i].Description, result.Tools[i].Name)
 		if len(findings) > 0 {
 			cleaned, stripped := inject.Strip(result.Tools[i].Description)
 			result.Tools[i].Description = cleaned
-			allFindings = append(allFindings, stripped...)
 			totalFindings += len(stripped)
 		}
 	}

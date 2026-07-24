@@ -6,10 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/valtors/vault/internal/sandbox"
-	"github.com/valtors/vault/internal/store"
 )
 
 type Server struct {
@@ -211,30 +209,6 @@ func (s *Server) handleSandboxByID(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "not found", http.StatusNotFound)
 }
 
-func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	type auditEntry struct {
-		SandboxID int64         `json:"sandbox_id"`
-		Entries   []store.Entry `json:"entries"`
-	}
-
-	var all []auditEntry
-	for _, sb := range s.sandboxes {
-		entries, _ := sb.AuditLog("", 100)
-		if len(entries) > 0 {
-			all = append(all, auditEntry{SandboxID: sb.ID(), Entries: entries})
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"count":  len(all),
-		"audits": all,
-	})
-}
-
 func splitPath(p string) []string {
 	var parts []string
 	current := ""
@@ -252,8 +226,4 @@ func splitPath(p string) []string {
 		parts = append(parts, current)
 	}
 	return parts
-}
-
-func (s *Server) uptime() time.Duration {
-	return time.Since(time.Now())
 }
