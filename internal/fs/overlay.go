@@ -66,9 +66,9 @@ func NewOverlay(root string, allowed []string) (*Overlay, error) {
 	}, nil
 }
 
-func (o *Overlay) Home() string  { return o.home }
-func (o *Overlay) Tmp() string    { return o.tmp }
-func (o *Overlay) Root() string   { return o.root }
+func (o *Overlay) Home() string { return o.home }
+func (o *Overlay) Tmp() string  { return o.tmp }
+func (o *Overlay) Root() string { return o.root }
 
 func (o *Overlay) Resolve(path string) (string, error) {
 	abs, err := filepath.Abs(path)

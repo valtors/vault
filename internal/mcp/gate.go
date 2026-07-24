@@ -30,7 +30,7 @@ type jsonRPC struct {
 	Method  string          `json:"method,omitempty"`
 	Params  json.RawMessage `json:"params,omitempty"`
 	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *rpcError        `json:"error,omitempty"`
+	Error   *rpcError       `json:"error,omitempty"`
 }
 
 type rpcError struct {
@@ -165,9 +165,9 @@ func (s *Server) Close() error {
 func (s *Server) ScanTools(ctx context.Context) ([]inject.Result, error) {
 	initReq, _ := json.Marshal(jsonRPC{
 		JSONRPC: "2.0",
-		ID:     json.Number("1"),
-		Method: "initialize",
-		Params: json.RawMessage(`{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"vault","version":"0.1.0"}}`),
+		ID:      json.Number("1"),
+		Method:  "initialize",
+		Params:  json.RawMessage(`{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"vault","version":"0.1.0"}}`),
 	})
 	s.stdin.Write(initReq)
 	s.stdin.Write([]byte("\n"))
@@ -181,7 +181,7 @@ func (s *Server) ScanTools(ctx context.Context) ([]inject.Result, error) {
 
 	listReq, _ := json.Marshal(jsonRPC{
 		JSONRPC: "2.0",
-		ID:     json.Number("2"),
+		ID:      json.Number("2"),
 		Method:  "tools/list",
 	})
 	s.stdin.Write(listReq)

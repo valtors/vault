@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./... -race -count=1
+
+      - name: Coverage
+        run: |
+          go test ./... -coverprofile=coverage.out -count=1
+          total=$(go tool cover -func=coverage.out | grep total | awk '{print $NF}' | tr -d '%')
+          echo "Coverage: ${total}%"
+          threshold=30
+          if (( $(echo "$total < $threshold" | bc -l) )); then
+            echo "Coverage ${total}% below threshold ${threshold}%"
+            exit 1
+          fi

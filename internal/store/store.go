@@ -11,8 +11,8 @@ import (
 )
 
 type DB struct {
-	db  *sql.DB
-	mu  sync.Mutex
+	db *sql.DB
+	mu sync.Mutex
 }
 
 type Entry struct {

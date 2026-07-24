@@ -112,7 +112,7 @@ func (p *Policy) SetRules(rules []Rule) {
 }
 
 type Dialer struct {
-	policy *Policy
+	policy  *Policy
 	timeout time.Duration
 }
 

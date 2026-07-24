@@ -52,7 +52,7 @@ func runCmd(args []string) {
 		Command:     rest[0],
 		Args:        rest[1:],
 		TimeoutSecs: *timeout,
-		RootDir:      *dir,
+		RootDir:     *dir,
 	}
 
 	if *allow != "" {

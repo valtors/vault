@@ -53,9 +53,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type createRequest struct {
-	Command    string   `json:"command"`
-	Args       []string `json:"args"`
-	Timeout    int      `json:"timeout"`
+	Command     string   `json:"command"`
+	Args        []string `json:"args"`
+	Timeout     int      `json:"timeout"`
 	AllowedDirs []string `json:"allowed_dirs"`
 }
 
@@ -216,7 +216,7 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 
 	type auditEntry struct {
-		SandboxID int64        `json:"sandbox_id"`
+		SandboxID int64         `json:"sandbox_id"`
 		Entries   []store.Entry `json:"entries"`
 	}
 

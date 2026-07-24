@@ -56,8 +56,8 @@ var safeVars = map[string]bool{
 }
 
 var defaultSafeValues = map[string]string{
-	"TERM": "xterm-256color",
-	"LANG": "C.UTF-8",
+	"TERM":  "xterm-256color",
+	"LANG":  "C.UTF-8",
 	"SHELL": "/bin/sh",
 }
 

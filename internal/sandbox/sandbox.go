@@ -151,12 +151,12 @@ func (s *Sandbox) Cleanup() error {
 	return nil
 }
 
-func (s *Sandbox) ID() int64        { return s.id }
-func (s *Sandbox) Home() string     { return s.overlay.Home() }
-func (s *Sandbox) Root() string      { return s.cfg.RootDir }
-func (s *Sandbox) DB() *store.DB    { return s.db }
+func (s *Sandbox) ID() int64            { return s.id }
+func (s *Sandbox) Home() string         { return s.overlay.Home() }
+func (s *Sandbox) Root() string         { return s.cfg.RootDir }
+func (s *Sandbox) DB() *store.DB        { return s.db }
 func (s *Sandbox) Overlay() *fs.Overlay { return s.overlay }
-func (s *Sandbox) IsDone() bool      { return s.done.Load() }
+func (s *Sandbox) IsDone() bool         { return s.done.Load() }
 
 func (s *Sandbox) AuditLog(category string, limit int) ([]store.Entry, error) {
 	return s.db.Query(category, limit)
