@@ -3,6 +3,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/valtors/vault?style=flat-square)](https://goreportcard.com/report/github.com/valtors/vault)
 [![Go Version](https://img.shields.io/badge/go-1.23+-00ADD8?style=flat-square)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![CI](https://github.com/valtors/vault/actions/workflows/ci.yml/badge.svg)](https://github.com/valtors/vault/actions/workflows/ci.yml)
 
 run your agent. it can't destroy your machine.
 
