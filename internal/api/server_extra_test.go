@@ -2,13 +2,11 @@ package api
 
 import (
 	"encoding/json"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestCreateSandbox_BadJSON(t *testing.T) {
@@ -129,12 +127,10 @@ func fmtID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
 
-func TestServer_StartStop_Real(t *testing.T) {
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
-	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
-	srv := NewServer(port)
-	go srv.Start()
-	time.Sleep(100 * time.Millisecond)
-	srv.Stop()
+func TestServer_Stop_WithoutStart(t *testing.T) {
+	srv := NewServer(0)
+	err := srv.Stop()
+	if err != nil {
+		t.Errorf("Stop without Start should return nil, got %v", err)
+	}
 }
