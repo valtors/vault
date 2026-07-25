@@ -1,9 +1,11 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/valtors/vault/internal/store"
 )
@@ -114,5 +116,53 @@ func TestJSONRPC_ParamsParsing(t *testing.T) {
 	json.Unmarshal(data, &parsed)
 	if string(parsed.Params) == "" {
 		t.Error("expected non-empty params")
+	}
+}
+
+func TestServer_ScanTools_WithCat(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dir := t.TempDir()
+	db, err := store.New(dir + "/test.db")
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	defer db.Close()
+
+	srv, err := NewServer(ctx, "cat", nil, db)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	defer srv.Close()
+
+	_, err = srv.ScanTools(ctx)
+	if err != nil {
+		t.Log("ScanTools error (expected - cat doesn.t respond to tools/list)")
+	}
+}
+
+func TestServer_HandleToolsList(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dir := t.TempDir()
+	db, err := store.New(dir + "/test.db")
+	if err != nil {
+		t.Fatalf("store.New: %v", err)
+	}
+	defer db.Close()
+
+	srv, err := NewServer(ctx, "cat", nil, db)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	defer srv.Close()
+
+	line := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	out := &bytes.Buffer{}
+	srv.handleToolsList(line, out)
+	if out.Len() == 0 {
+		t.Error("expected output from handleToolsList")
 	}
 }
