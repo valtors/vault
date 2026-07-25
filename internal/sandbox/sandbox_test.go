@@ -45,7 +45,7 @@ func TestNew_CreatesSandbox(t *testing.T) {
 }
 
 func TestNew_AutoCreatesRootDir(t *testing.T) {
-	cfg := Config{RootDir: ""}
+	cfg := Config{RootDir: t.TempDir()}
 	s, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
