@@ -2,6 +2,7 @@ package store
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -192,4 +193,56 @@ func tempPath(t *testing.T) string {
 	f.Close()
 	os.Remove(path)
 	return path
+}
+
+func TestNew_InvalidPath(t *testing.T) {
+	_, err := New("/nonexistent/dir/that/does/not/exist/db.sqlite")
+	if err == nil {
+		t.Error("expected error for invalid path")
+	}
+}
+
+func TestNew_ValidPath(t *testing.T) {
+	dir := t.TempDir()
+	db, err := New(filepath.Join(dir, "test.db"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer db.Close()
+}
+
+func TestLog_MultipleEntries(t *testing.T) {
+	dir := t.TempDir()
+	db, _ := New(filepath.Join(dir, "test.db"))
+	defer db.Close()
+
+	db.Log("login", "user1", "192.168.1.1")
+	db.Log("logout", "user1", "192.168.1.1")
+	db.Log("login", "user2", "192.168.1.2")
+
+	count, err := db.Count()
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected 3 entries, got %d", count)
+	}
+}
+
+func TestNew_Reopen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.db")
+	db1, _ := New(path)
+	db1.Log("test", "data", "detail")
+	db1.Close()
+
+	db2, err := New(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer db2.Close()
+	count, _ := db2.Count()
+	if count != 1 {
+		t.Errorf("expected 1 entry after reopen, got %d", count)
+	}
 }
