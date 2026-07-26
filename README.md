@@ -113,6 +113,12 @@ go test ./internal/... -race
 
 go. single binary. zero runtime dependencies. sqlite (pure-go, no cgo). stdlib everything else. boring tech on purpose.
 
+## contributing
+
+see [CONTRIBUTING.md](CONTRIBUTING.md). we welcome contributions of all kinds - bug fixes, new patterns, transport support, docs.
+
+good first issues are labeled `good first issue`.
+
 ## license
 
 MIT
