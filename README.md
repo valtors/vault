@@ -12,6 +12,8 @@ run your agent. it can't destroy your machine.
 
 vault is a sandbox for ai agents. you run a command inside it. the agent thinks it has full access to your system. it doesn't.
 
+[landing](https://valtors.github.io/vault/) - [github](https://github.com/valtors/vault)
+
 - **filesystem overlay** - agent gets a fake home directory. `~/.ssh` is invisible. `~/.aws` is invisible. `~/.env` is invisible. writes go to the overlay. reads from allowlisted paths only.
 - **env sanitizer** - strips every secret from the environment. tokens, api keys, credentials, passwords. gone. the agent sees a clean shell.
 - **network policy** - allow/deny rules per host. wildcard support. the agent can't call your production database. the agent can't exfiltrate data. every connection logged.
