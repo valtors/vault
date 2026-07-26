@@ -4,6 +4,7 @@
 [![Go Version](https://img.shields.io/badge/go-1.23+-00ADD8?style=flat-square)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-MIT-0F172A?style=flat-square)](LICENSE)
 [![CI](https://github.com/valtors/vault/actions/workflows/ci.yml/badge.svg)](https://github.com/valtors/vault/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-75-green?style=flat-square)]()
 
 run your agent. it can't destroy your machine.
 
@@ -100,7 +101,7 @@ injection patterns: prompt override, identity swap, exfiltration, destructive co
 
 ## tests
 
-75 tests. 69.6% coverage. all pass.
+75 tests. 72.5% coverage. all pass.
 
 ```bash
 go test ./internal/... -race
