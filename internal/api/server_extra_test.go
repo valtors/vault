@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -123,10 +122,6 @@ func TestSplitPath(t *testing.T) {
 	if parts[1] != "123" {
 		t.Errorf("expected 123, got %s", parts[0])
 	}
-}
-
-func fmtID(id int64) string {
-	return strconv.FormatInt(id, 10)
 }
 
 func TestServer_Stop_WithoutStart(t *testing.T) {
