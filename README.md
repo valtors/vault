@@ -103,7 +103,7 @@ injection patterns: prompt override, identity swap, exfiltration, destructive co
 
 ## tests
 
-75 tests. 72.5% coverage. all pass.
+83 tests. 76.3% coverage. all pass.
 
 ```bash
 go test ./internal/... -race
