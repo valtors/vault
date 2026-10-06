@@ -6,11 +6,20 @@
 [![CI](https://github.com/valtors/vault/actions/workflows/ci.yml/badge.svg)](https://github.com/valtors/vault/actions/workflows/ci.yml)
 [![tests](https://img.shields.io/badge/tests-83-green?style=flat-square)]()
 
-run your agent. it can't destroy your machine.
+policy and audit utilities for local AI agents. experimental; not an OS security boundary.
+
+> [!WARNING]
+> Vault currently launches a normal host process with a sanitized environment and an alternate working directory. It does **not** enforce kernel-level filesystem or network isolation. Do not run untrusted code with the current release. See [Security boundary](#security-boundary).
 
 ## what
 
-vault is a sandbox for ai agents. you run a command inside it. the agent thinks it has full access to your system. it doesn't.
+vault is an experimental policy, inspection, and audit layer for local AI-agent processes. It helps reduce accidental exposure, but it is not currently a secure sandbox.
+
+## security boundary
+
+The current implementation does not use namespaces, cgroups, seccomp, chroot, containers, gVisor, or virtual machines. Rewriting `HOME`, changing the working directory, and filtering environment variables do not prevent a child process from using absolute filesystem paths or opening its own network connections. Filesystem and network rules apply only where operations explicitly pass through Vault's helper APIs.
+
+Use Vault only with code you already trust. A future isolation backend must provide an independently testable OS boundary before this project can claim containment of untrusted agents.
 
 [landing](https://valtors.github.io/vault/) - [github](https://github.com/valtors/vault)
 
