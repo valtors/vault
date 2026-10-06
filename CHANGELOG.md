@@ -3,9 +3,9 @@
 ## v0.1.0 - 2026-07-30
 
 ### Added
-- Sandboxed execution environment for AI agents
-- Filesystem isolation with allow/deny path rules
-- Resource limits (CPU, memory, execution timeout)
+- Experimental policy and audit environment for AI agents
+- Helper-level filesystem allow/deny path rules (not an OS isolation boundary)
+- Advisory resource configuration and process timeout
 - Permission-gated tool access (read, write, execute)
 - Audit log of all agent actions
 - SQLite-backed audit trail

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Vault is a sandbox runtime for AI agents. It wraps untrusted processes in a filesystem overlay, sanitized environment, network policy, and prompt-injection scanner -- then logs every action to a per-sandbox audit database. The agent runs inside the sandbox; Vault watches, filters, and records.
+Vault is an experimental policy and audit runtime for AI agents. It launches a host process with an alternate working directory and sanitized environment, provides opt-in filesystem/network helpers, scans MCP metadata, and records selected actions. The current implementation is not an OS sandbox and must not be used to execute untrusted code.
 
 ```
                     +-------------+
@@ -35,16 +35,16 @@ Vault is a sandbox runtime for AI agents. It wraps untrusted processes in a file
 
 ## Design Principles
 
-1. **Sandbox the agent, not the user.** Vault wraps the agent process. The user starts Vault; Vault starts the agent inside a restricted environment. The agent never sees the real filesystem or real environment.
-2. **Defense in depth.** Filesystem overlay blocks sensitive paths. Environment sanitizer strips secrets. Network policy filters connections. MCP gate scans tool descriptions for prompt injection. Each layer is independent; failure of one does not compromise the others.
-3. **Audit everything.** Every sandbox lifecycle event, network connection attempt, and MCP tool call is logged to a per-sandbox SQLite database. Queryable after the fact.
-4. **No dependencies on container primitives.** No namespaces, no cgroups, no seccomp. Pure Go process wrapping. Portable to any OS Go runs on.
+1. **Do not overstate the boundary.** Vault does not currently isolate an untrusted child process from the host kernel, filesystem, or network.
+2. **Reduce accidental exposure.** Environment sanitation, alternate working directories, policy helpers, and MCP metadata scanning are defense-supporting controls, not containment.
+3. **Make recorded behavior inspectable.** Selected lifecycle events and operations routed through Vault can be written to a per-process SQLite database.
+4. **Require real isolation for untrusted execution.** A production security boundary must use and verify OS/container/VM primitives such as namespaces plus seccomp, Landlock, gVisor, Kata, or Firecracker.
 
 ## Components
 
 ### sandbox (`internal/sandbox`)
 
-The core orchestrator. Creates the overlay, opens the audit DB, spawns the child process with sanitized env and restricted filesystem, and waits for completion.
+The core orchestrator. Creates a working directory, opens the audit DB, spawns a normal host process with a sanitized environment, and waits for completion. The child can still address host resources permitted to its operating-system user unless a future isolation backend prevents it.
 
 **Lifecycle:**
 1. `New(cfg)` -- assign atomic ID, create root dir (0700), open audit DB, create overlay.
@@ -75,7 +75,7 @@ Filesystem overlay. Creates an isolated home directory and tmp directory under t
 2. Path is inside sandbox home, sandbox tmp, or the allowed symlinks directory.
 3. Otherwise: blocked.
 
-**Blocked paths:** 12 sensitive dotfiles/directories are hard-blocked. The agent cannot read SSH keys, cloud credentials, API tokens, or git config even if it escapes the overlay.
+**Blocked paths:** helper-based path resolution rejects a set of sensitive dotfiles and directories. This does not constrain direct filesystem access performed by the child process.
 
 ### env (`internal/env`)
 
@@ -100,7 +100,7 @@ Network policy engine. Allowlist/blocklist with wildcard support.
 
 **Wildcard matching:** `*.example.com` matches any subdomain. `*` matches everything.
 
-**Dialer:** `Dial(network, addr)` checks policy before connecting. Blocked connections are logged to the audit DB. Timeout configurable (default 10s).
+**Dialer:** `Dial(network, addr)` checks policy before connecting. Only callers that explicitly use this dialer are governed by the policy; arbitrary child-process sockets are not intercepted. Blocked helper calls are logged to the audit DB. Timeout is configurable (default 10s).
 
 ### mcp gate (`internal/mcp`)
 

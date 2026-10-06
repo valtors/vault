@@ -99,7 +99,7 @@ func serveCmd(args []string) {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `vault %s - sandbox for ai agents
+	fmt.Fprintf(os.Stderr, `vault %s - experimental policy and audit tools for ai agents
 
 usage:
   vault run [flags] <command> [args...]    run a command in a sandbox
